@@ -609,12 +609,58 @@ class Weibo(object):
                 weibo['up_num'] = footer['up_num']  # 微博点赞数
                 weibo['retweet_num'] = footer['retweet_num']  # 转发数
                 weibo['comment_num'] = footer['comment_num']  # 评论数
+                comments = self.get_weibo_comments(weibo['id'], weibo)
+                weibo['comments'] = comments
             else:
                 weibo = None
             return weibo
         except Exception as e:
             print('Error: ', e)
             traceback.print_exc()
+
+    def get_weibo_comments(self, weibo_id, weibo):
+        """根据weibo id获取评论内容"""
+        try:
+            weibo_comments = []
+            url = self.get_weibo_comment_url(weibo_id)
+            selector = self.handle_html(url)
+            infos = selector.xpath("//div[@class='c']")
+            for info in infos:
+                if info.get('id') is None:
+                    continue
+                if info.get('id').find('M_') >= 0:
+                    content_comment = info.xpath("div/a")[0].text + info.xpath("div/span[@class='ctt']")[0].text
+                    weibo['content_comment'] = content_comment
+                if info.get('id').find('C_') >= 0:
+                    kt = info.xpath("span[@class='kt']")
+                    if kt:
+                        # 热门回复标识
+                        weibo_comments.append(kt[0].text)
+                    # 回复用户名称
+                    weibo_comments.append(info.xpath("a")[0].text)
+                    # 冒号分隔符
+                    weibo_comments.append(u':')
+                    # 回复字样
+                    reply = info.xpath("span[@class='ctt']")[0].text
+                    # 有的回复只有表情，没有text内容
+                    if reply:
+                        weibo_comments.append(reply)
+                        if reply.find(u'回复') >= 0:
+                            # 回复对象
+                            weibo_comments.append(info.xpath("span[@class='ctt']/a")[0].text)
+                            # 回复内容
+                            weibo_comments.append(info.xpath("span[@class='ctt']/a")[0].tail)
+                    images = info.xpath("span[@class='ctt']/img")
+                    if images:
+                        for image in images:
+                            # 表情含义
+                            weibo_comments.append(image.get('alt'))
+                    weibo_comments.append('\n')
+            return ''.join(weibo_comments)
+        except Exception as e:
+            print("Error: ", e)
+            traceback.print_exc()
+            return u'获取评论出错'
 
     def print_one_weibo(self, weibo):
         """打印一条微博"""
@@ -625,7 +671,7 @@ class Weibo(object):
         print(u'点赞数：%d' % weibo['up_num'])
         print(u'转发数：%d' % weibo['retweet_num'])
         print(u'评论数：%d' % weibo['comment_num'])
-        print(u'url：https://weibo.cn/comment/%s' % weibo['id'])
+        print(u'url：' + self.get_weibo_comment_url(weibo['id']))
 
     def is_pinned_weibo(self, info):
         """判断微博是否为置顶微博"""
@@ -752,9 +798,9 @@ class Weibo(object):
             temp_result = []
             if wrote_num == 0:
                 if self.filter:
-                    result_header = u'\n\n原创微博内容: \n'
+                    result_header = u'\n\n\n原创微博内容: \n'
                 else:
-                    result_header = u'\n\n微博内容: \n'
+                    result_header = u'\n\n\n微博内容: \n'
                 result_header = (u'用户信息\n用户昵称：' + self.user['nickname'] +
                                  u'\n用户id: ' +
                                  str(self.user_config['user_id']) +
@@ -764,13 +810,18 @@ class Weibo(object):
                                  result_header)
                 temp_result.append(result_header)
             for i, w in enumerate(self.weibo[wrote_num:]):
-                temp_result.append(
-                    str(wrote_num + i + 1) + ':' + w['content'] + '\n' +
-                    u'微博位置: ' + w['publish_place'] + '\n' + u'发布时间: ' +
-                    w['publish_time'] + '\n' + u'点赞数: ' + str(w['up_num']) +
-                    u'   转发数: ' + str(w['retweet_num']) + u'   评论数: ' +
-                    str(w['comment_num']) + '\n' + u'发布工具: ' +
-                    w['publish_tool'] + '\n\n')
+                if (not w['content']) or (w['content'].find(u'...全文') >= 0):
+                    content = w['content_comment']
+                else:
+                    content = w['content']
+                temp_result.insert(1, str(wrote_num + i + 1) + ':' + content + '\n' +
+                                   u'微博位置: ' + w['publish_place'] + '\n' +
+                                   u'发布时间: ' + w['publish_time'] + '\n' +
+                                   u'点赞数: ' + str(w['up_num']) + u'   转发数: ' + str(w['retweet_num']) + u'   评论数: ' + str(w['comment_num']) + '\n' +
+                                   u'评论url: ' + self.get_weibo_comment_url(w['id']) + '\n' +
+                                   u'发布工具: ' + w['publish_tool'] + '\n' +
+                                   u'评论内容: ' + '\n' +
+                                   w['comments'] + '\n\n\n')
             result = ''.join(temp_result)
             with open(self.get_filepath('txt'), 'ab') as f:
                 f.write(result.encode(sys.stdout.encoding))
@@ -1058,6 +1109,11 @@ class Weibo(object):
                         user_config['since_date'] = self.since_date
                     user_config_list.append(user_config)
         return user_config_list
+
+    @staticmethod
+    def get_weibo_comment_url(weibo_id):
+        """获取微博评论url"""
+        return u'https://weibo.cn/comment/%s' % weibo_id
 
     def initialize_info(self, user_config):
         """初始化爬虫信息"""

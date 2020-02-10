@@ -1,12 +1,11 @@
 {
-	"user_id_list": ["1669879400"],
+	"user_id_list": [""],
     "filter": 1,
-    "since_date": "2018-01-01",
-    "write_mode": ["csv", "txt"],
+    "since_date": "2019-12-29",
+    "write_mode": ["txt"],
     "pic_download": 1,
     "video_download": 1,
-    "cookie": "your cookie",
-    "mysql_config": {
+    "cookie": ""
         "host": "localhost",
         "port": 3306,
         "user": "root",
